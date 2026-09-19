@@ -11,7 +11,7 @@ let cachedClient: SupabaseClient | null = null;
 
 // Lazily created so specs that never touch the admin API (e.g. the landing
 // page smoke test) don't need SUPABASE_SERVICE_ROLE_KEY set just to load.
-function getAdminClient(): SupabaseClient {
+export function getAdminClient(): SupabaseClient {
   if (cachedClient) return cachedClient;
 
   const supabaseUrl = process.env.SUPABASE_URL;

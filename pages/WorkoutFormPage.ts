@@ -1,25 +1,22 @@
 import { Page } from "@playwright/test";
+import { Dialog } from "../components/Dialog";
+import { WorkoutTypeDropdown } from "../components/WorkoutTypeDropdown";
 
 export class WorkoutFormPage {
-  constructor(private page: Page) {}
+  private typeDropdown: WorkoutTypeDropdown;
+  private dialog: Dialog;
+
+  constructor(private page: Page) {
+    this.typeDropdown = new WorkoutTypeDropdown(page);
+    this.dialog = new Dialog(page);
+  }
 
   async gotoNew() {
     await this.page.goto("/workout/new");
   }
 
-  /**
-   * Picks a type in the first section that has none chosen yet, by searching
-   * the dropdown and clicking the match.
-   */
   async selectWorkoutType(type: string) {
-    await this.page.getByRole("button", { name: "Select workout type" }).first().click();
-    const search = this.page.getByPlaceholder("Search workout types...");
-    await search.fill(type);
-    // Scope to the open dropdown, whose siblings include the search box.
-    await search
-      .locator("xpath=..")
-      .getByRole("button", { name: type, exact: true })
-      .click();
+    await this.typeDropdown.select(type);
   }
 
   async addExercise() {
@@ -49,9 +46,6 @@ export class WorkoutFormPage {
    */
   async removeFirstWorkout() {
     await this.page.getByRole("button", { name: "Remove Workout" }).first().click();
-    await this.page
-      .getByRole("dialog")
-      .getByRole("button", { name: "Remove", exact: true })
-      .click();
+    await this.dialog.press("Remove");
   }
 }

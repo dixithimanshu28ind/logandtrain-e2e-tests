@@ -12,16 +12,29 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
   workers: process.env.CI ? 2 : undefined,
-  reporter: [["html", { open: "never" }], ["list"]],
+  timeout: 30_000,
+  expect: { timeout: 10_000 },
+  reporter: process.env.CI
+    ? [["github"], ["html", { open: "never" }], ["list"]]
+    : [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: BASE_URL,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
+    video: "retain-on-failure",
   },
   projects: [
     {
       name: "chromium",
       use: { ...devices["Desktop Chrome"] },
+    },
+    {
+      // Phone-sized viewport. Runs only the smoke set, and skips API specs
+      // (a viewport changes nothing about an HTTP call).
+      name: "mobile-chrome",
+      use: { ...devices["Pixel 7"] },
+      grep: /@smoke/,
+      testIgnore: /tests\/api\//,
     },
   ],
 });

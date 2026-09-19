@@ -1,6 +1,6 @@
 import { test, expect } from "../../fixtures/test-fixtures";
 
-test.describe("Workout CRUD", () => {
+test.describe("Workout CRUD", { tag: "@smoke" }, () => {
   test("log, edit, and delete a workout, with the streak updating", async ({
     signedInPage: page,
     dashboardPage,
