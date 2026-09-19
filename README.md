@@ -77,6 +77,7 @@ npm test                # everything, both projects
 npm run test:smoke      # @smoke only
 npm run test:api        # @api only
 npm run typecheck       # tsc --noEmit
+npm run sweep -- --dry-run   # list orphaned test users (drop --dry-run to delete)
 npm run test:headed     # see the browser
 npm run test:ui         # Playwright's interactive UI mode
 npm run report          # open the last HTML report
@@ -84,4 +85,44 @@ npm run report          # open the last HTML report
 
 ## CI
 
-`.github/workflows/e2e.yml` typechecks, then runs the suite on every push to `main`, on a daily schedule (6am UTC), and on demand via `workflow_dispatch`. The URL under test is, in order: the `base_url` input on a manual run, the `BASE_URL` repository variable, then the production URL. Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` as repository secrets (Settings → Secrets and variables → Actions) for it to work — the workflow can't create these itself.
+`.github/workflows/e2e.yml` runs on:
+
+| Trigger | What runs |
+|---|---|
+| A deploy finishing (see below) | `@smoke` against the deployed URL, then posts an `e2e/smoke` status on the app commit |
+| Push to `main`, manual dispatch | Everything (manual runs can pick `smoke`, a `base_url`, and a `report_sha` to post a status on) |
+| Daily 6am UTC | Everything against production, after sweeping orphaned test users |
+
+The URL under test is, in order: the deploy's URL, the manual `base_url` input, the `BASE_URL` repository variable, then the production URL.
+
+### Running after every deploy
+
+Vercel reports each deployment to GitHub. The app repo's `.github/workflows/e2e-on-deploy.yml` listens for a successful one and sends this repo a `repository_dispatch` (`app-deployed`) carrying `{ url, sha, environment }`. This repo tests that URL and posts the result back, so the deploy commit shows a ✓ or ✗ linking to the run.
+
+- **Production** deploys are tested at the public production alias. Vercel's per-deployment URLs are behind login, and the app exposes no build id, so the run waits 20 seconds for the alias to switch over.
+- **Preview** deploys are behind Vercel login too. They're tested only when `VERCEL_BYPASS_SECRET` is set (below); otherwise the run is skipped, not failed.
+- The dispatched URL and SHA are validated before use (`*.vercel.app` over https, 40-character hash), since they arrive in an external payload.
+
+### Secrets and variables
+
+| Where | Name | Purpose |
+|---|---|---|
+| This repo, secret | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Create/delete test users, seed data |
+| This repo, secret | `APP_STATUS_TOKEN` | Post commit statuses on the app repo (fine-grained token, *Commit statuses: write*) |
+| App repo, secret | `E2E_DISPATCH_TOKEN` | Send the dispatch to this repo (fine-grained token, *Contents: write*) |
+| This repo, secret (optional) | `VERCEL_BYPASS_SECRET` | Test Preview deploys. Create it in Vercel: project → Settings → Deployment Protection → *Protection Bypass for Automation*. Sent only to the app's own origin. |
+| This repo, variable (optional) | `BASE_URL` | Default URL under test |
+| App repo, variable (optional) | `PRODUCTION_URL` | Overrides the production alias the trigger tests |
+
+The two tokens are fine-grained personal access tokens and expire (max one year), so renew them before then — a run that fails with a 401/403 on the dispatch or status call means one has expired.
+
+**Setting a token secret.** `gh secret set NAME` only prompts for the value in a real interactive terminal. Run non-interactively (e.g. through an agent's shell), it silently stores an **empty** secret, and the workflow's gate then fails with "is missing or empty". To avoid that, copy the token to the clipboard and pipe it in, so it never appears in the command or its output:
+
+```bash
+pbpaste | gh secret set APP_STATUS_TOKEN -R dixithimanshu28ind/logandtrain-e2e-tests
+pbpaste | gh secret set E2E_DISPATCH_TOKEN -R dixithimanshu28ind/gym-workout-logger
+```
+
+### Test-user sweep
+
+Throwaway users are normally deleted by each test. The daily run also calls `npm run sweep`, which deletes any that were orphaned (a crashed run, say) once they're over 2 hours old. It matches only the exact test-email shape (`e2e-<digits>-<id>@logandtrain-test.dev`, or the older `@gymlog-test.dev`), never a real account.

@@ -1,23 +1,113 @@
-name: E2E Smoke Tests
+name: E2E
 
 on:
   push:
     branches: [main]
+  schedule:
+    - cron: "0 6 * * *" # daily full run against production, plus the test-user sweep
   workflow_dispatch:
     inputs:
       base_url:
         description: "URL to test (defaults to the BASE_URL repo variable, then production)"
         required: false
-  schedule:
-    - cron: "0 6 * * *" # daily smoke run against production
+      suite:
+        description: "Which tests to run"
+        type: choice
+        options: [all, smoke]
+        default: all
+      report_sha:
+        description: "App commit SHA to post the result on as a status (optional)"
+        required: false
+  # Sent by the app repo's e2e-on-deploy workflow when Vercel finishes a deploy.
+  # Payload: { url, sha, environment }
+  repository_dispatch:
+    types: [app-deployed]
+
+permissions:
+  contents: read
+
+# One run per app commit; never cancel a run that has already started.
+concurrency:
+  group: e2e-${{ github.event.client_payload.sha || github.run_id }}
+  cancel-in-progress: false
+
+env:
+  APP_REPO: dixithimanshu28ind/gym-workout-logger
+  RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
 jobs:
+  # Validates the request and decides whether to run. Kept apart from the test
+  # job so a skipped run produces no statuses and no browser install.
+  gate:
+    runs-on: ubuntu-latest
+    outputs:
+      run: ${{ steps.decide.outputs.run }}
+      report_sha: ${{ steps.decide.outputs.report_sha }}
+    env:
+      EVENT: ${{ github.event_name }}
+      BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://gym-workout-logger-ashen.vercel.app' }}
+      DEPLOY_ENV: ${{ github.event.client_payload.environment }}
+      REPORT_SHA: ${{ github.event.client_payload.sha || inputs.report_sha }}
+      HAS_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET != '' }}
+      GH_TOKEN: ${{ secrets.APP_STATUS_TOKEN }}
+    steps:
+      - name: Validate the request and decide whether to run
+        id: decide
+        run: |
+          # Values arrive from a dispatch payload, so never trust their shape.
+          if [ "$EVENT" = "repository_dispatch" ]; then
+            if ! [[ "$BASE_URL" =~ ^https://[A-Za-z0-9.-]+\.vercel\.app/?$ ]]; then
+              echo "::error::Refusing to test unexpected URL: $BASE_URL"; exit 1
+            fi
+          fi
+          if [ -n "$REPORT_SHA" ] && ! [[ "$REPORT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::report SHA is not a 40-character commit hash"; exit 1
+          fi
+
+          # Preview deployments sit behind Vercel login. Without the bypass
+          # secret there is nothing we can test, so skip instead of failing.
+          if [ "$DEPLOY_ENV" = "Preview" ] && [ "$HAS_BYPASS_SECRET" != "true" ]; then
+            echo "::notice::Skipping Preview run: VERCEL_BYPASS_SECRET is not set."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "report_sha=$REPORT_SHA" >> "$GITHUB_OUTPUT"
+
+      # gh's own error for a missing token is easy to misread, and a secret
+      # that exists but holds an empty value looks identical to a missing one.
+      - name: Check the status token is usable
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.report_sha != ''
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::APP_STATUS_TOKEN is missing or empty. Re-set it with the token value (see README, 'Secrets and variables')."
+            exit 1
+          fi
+          if ! gh api "repos/$APP_REPO" --jq .full_name >/dev/null 2>&1; then
+            echo "::error::APP_STATUS_TOKEN cannot read $APP_REPO. Check it is a fine-grained token with access to that repository and has not expired."
+            exit 1
+          fi
+
+      - name: Mark the commit as pending
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.report_sha != ''
+        run: |
+          gh api "repos/$APP_REPO/statuses/$REPORT_SHA" \
+            -f state=pending -f context="e2e/smoke" \
+            -f description="Smoke tests running (${DEPLOY_ENV:-manual run})" \
+            -f target_url="$RUN_URL"
+
   test:
+    needs: gate
+    if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
     env:
-      BASE_URL: ${{ inputs.base_url || vars.BASE_URL || 'https://gym-workout-logger-ashen.vercel.app' }}
+      EVENT: ${{ github.event_name }}
+      SUITE: ${{ inputs.suite }}
+      DEPLOY_ENV: ${{ github.event.client_payload.environment }}
+      BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://gym-workout-logger-ashen.vercel.app' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v7
 
@@ -28,11 +118,32 @@ jobs:
 
       - run: npm ci
 
-      - run: npm run typecheck
+      # A deploy gate should only fail on the app, so skip the e2e repo's own
+      # typecheck when triggered by a deploy.
+      - name: Typecheck
+        if: github.event_name != 'repository_dispatch'
+        run: npm run typecheck
 
       - run: npx playwright install --with-deps chromium
 
-      - run: npm test
+      # Removes leftover throwaway users (older than 2h) once a day.
+      - name: Sweep orphaned test users
+        if: github.event_name == 'schedule'
+        run: npm run sweep
+
+      # No build id is exposed by the app, so the production alias can lag the
+      # deploy event by a few seconds. Give it a moment to switch over.
+      - name: Let the production alias settle
+        if: env.DEPLOY_ENV == 'Production'
+        run: sleep 20
+
+      - name: Run tests
+        run: |
+          if [ "$EVENT" = "repository_dispatch" ] || [ "$SUITE" = "smoke" ]; then
+            npm run test:smoke
+          else
+            npm test
+          fi
 
       - uses: actions/upload-artifact@v7
         if: always()
@@ -40,3 +151,26 @@ jobs:
           name: playwright-report
           path: playwright-report/
           retention-days: 14
+
+  # Posts the outcome onto the app repo's commit, so a deploy shows a check.
+  report:
+    needs: [gate, test]
+    if: always() && needs.gate.outputs.run == 'true' && needs.gate.outputs.report_sha != ''
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ secrets.APP_STATUS_TOKEN }}
+      REPORT_SHA: ${{ needs.gate.outputs.report_sha }}
+      TEST_RESULT: ${{ needs.test.result }}
+      DEPLOY_ENV: ${{ github.event.client_payload.environment }}
+    steps:
+      - name: Post the result
+        run: |
+          TARGET="${DEPLOY_ENV:-manual run}"
+          case "$TEST_RESULT" in
+            success)   STATE=success; DESC="Smoke tests passed ($TARGET)" ;;
+            failure)   STATE=failure; DESC="Smoke tests failed ($TARGET)" ;;
+            *)         STATE=error;   DESC="Smoke run did not complete: $TEST_RESULT ($TARGET)" ;;
+          esac
+          gh api "repos/$APP_REPO/statuses/$REPORT_SHA" \
+            -f state="$STATE" -f context="e2e/smoke" \
+            -f description="$DESC" -f target_url="$RUN_URL"
