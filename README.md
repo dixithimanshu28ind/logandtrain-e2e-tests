@@ -6,6 +6,7 @@ Playwright + TypeScript end-to-end test suite for [Log & Train](https://github.c
 
 - **Public pages** — landing, features, how-it-works, legal, support, 404
 - **Authentication** — sign up, sign in, sign out
+- **Sign-out destination** (`@regression`) — lands on the homepage from every page, on slow networks, and after the unsaved-changes dialog; visitors who didn't choose to sign out still go to `/signin`
 - **Programs** — list and detail pages, checked against `/api/programs`
 - **Dashboard** — seeded workouts, streak, running total
 - **Workout CRUD** — log via the type dropdown, edit, remove, streak updates
@@ -18,12 +19,12 @@ Playwright + TypeScript end-to-end test suite for [Log & Train](https://github.c
 pages/        Page objects, one per app page
 components/   Page objects for reusable UI (type dropdown, dialogs)
 fixtures/     Playwright fixtures: throwaway users, API sign-in, seeding,
-              console-error guard, third-party stubs
-utils/        Supabase admin/session helpers, seeding, date helpers
+              console-error guard, Vercel protection bypass
+utils/        Supabase admin/session helpers, seeding, date and network helpers
 tests/
   smoke/          Browser specs for the critical paths
+  regression/     Deeper browser specs, run nightly
   api/            HTTP-only specs (no browser page)
-  known-issues/   Tests documenting known app problems (see below)
 ```
 
 ## Tags
@@ -34,8 +35,8 @@ Every spec carries a tag; run a slice with `--grep`.
 |---|---|
 | `@smoke` | Critical paths. Fast; meant to gate every deploy. |
 | `@api` | HTTP-only checks. |
-| `@regression` | Full coverage (nightly). Empty so far. |
-| `@known-issue` | Documents a current app bug; see below. |
+| `@regression` | Deeper coverage: more scenarios, slow-network runs. Runs nightly, not on every deploy. |
+| `@known-issue` | Documents a current app bug (none right now); see below. |
 
 Two Playwright projects run: `chromium` (desktop) and `mobile-chrome` (Pixel 7 viewport, `@smoke` only).
 
@@ -45,14 +46,14 @@ Two Playwright projects run: `chromium` (desktop) and `mobile-chrome` (Pixel 7 v
 - **API sign-in.** `signedInPage` injects a session instead of driving the sign-in form. Sign-in through the UI is tested once, in `auth.spec.ts`.
 - **API seeding.** The `seed` fixture inserts workouts directly, so a test that needs data doesn't click through the log form.
 - **Console-error guard.** An automatic fixture fails any test that produces an uncaught exception, a console error, a 5xx response, or a failed request. A test that legitimately triggers one opts out of that single message with `test.use({ allowedProblems: [/regex/] })`.
-- **Third-party stubs.** The chat widget's n8n webhook is stubbed in browser tests (`fixtures/third-party.ts`), so the suite tests Log & Train rather than n8n's uptime.
+- **Rate-limit backoff.** Supabase rate-limits auth requests per IP, so `signInViaApi` waits and retries on a 429 instead of failing the test. Heavily repeated runs (100+ sign-ins in a few minutes) are what trigger it.
+- **Throttled runs.** `throttleNetwork` (`utils/network.ts`) slows the network at the moment of the action under test. It waits for the page to go idle first; changing the emulated conditions mid-request aborts in-flight requests with `ERR_NETWORK_CHANGED`, which the guard would rightly report.
 
 ## Known issues
 
-`tests/known-issues/` records app problems the suite has found, so they stay visible without keeping the deploy gate red:
+None right now. Both problems this suite found early on (the chat widget's dead webhook, GYM-36, and sign-out landing on `/signin` about a third of the time, GYM-37) were fixed in the app, and their known-issue tests and the chat stub were removed. The sign-out fix is now covered by `tests/regression/sign-out.spec.ts`.
 
-- **Chat webhook returns 404** (`chat-webhook.spec.ts`). The FitSpark chat widget is broken for real users. The test uses `test.fail`, so it passes while the webhook is down and **fails once it's fixed** — the cue to delete it and the stub.
-- **Sign-out destination is racy** (`sign-out-destination.spec.ts`). Sign-out should land on `/` but lands on `/signin` about 30% of the time. Skipped with `test.fixme`; enable it once the app fixes the race.
+When the suite finds a bug that can't be fixed straight away, record it under `tests/known-issues/` and tag it `@known-issue`, so it stays visible without keeping the deploy gate red. Use `test.fixme` for something that fails intermittently, or `test.fail` for something that fails consistently: it passes while the bug exists and fails once it's fixed, which is the cue to delete it.
 
 ## Test data strategy
 

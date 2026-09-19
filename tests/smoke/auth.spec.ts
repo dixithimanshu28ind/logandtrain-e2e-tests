@@ -29,19 +29,24 @@ test.describe("Authentication", { tag: "@smoke" }, () => {
     await expect(page.getByRole("heading", { name: "My Workouts" })).toBeVisible();
   });
 
-  // The app intends sign-out to land on "/" (GYM-24) but a race sometimes
-  // sends users to /signin instead, so the destination isn't asserted here —
-  // see tests/known-issues/sign-out-destination.spec.ts. What must always
-  // hold is that the session ends and protected pages are locked again.
-  test("sign out ends the session", async ({ signedInPage: page, dashboardPage }) => {
+  // Sign-out lands on the homepage (GYM-24, made reliable by GYM-37) and ends
+  // the session. More sign-out cases live in tests/regression/sign-out.spec.ts.
+  test("sign out lands on the homepage and ends the session", async ({
+    signedInPage: page,
+    dashboardPage,
+  }) => {
     await dashboardPage.signOut();
-    await page.waitForURL((url) => ["/", "/signin"].includes(url.pathname));
+    await page.waitForURL((url) => url.pathname === "/");
+    await expect(page.getByRole("heading", { level: 1, name: /Train your way/ })).toBeVisible();
 
-    // Wait for the stored session to actually be cleared before probing.
+    // Wait for the stored session to actually clear. That is also when a
+    // competing redirect to /signin would have fired, so re-check the URL after.
     await expect
       .poll(() => page.evaluate((key) => localStorage.getItem(key), sessionStorageKey()))
       .toBeNull();
+    expect(new URL(page.url()).pathname).toBe("/");
 
+    // Protected pages are locked again.
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { level: 1, name: "Welcome back" })).toBeVisible();
   });
