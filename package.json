@@ -5,6 +5,10 @@
   "description": "Playwright end-to-end test suite for Log & Train (https://github.com/dixithimanshu28ind/gym-workout-logger)",
   "scripts": {
     "test": "playwright test",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:api": "playwright test --grep @api --project=chromium",
+    "test:regression": "playwright test --grep @regression",
+    "typecheck": "tsc --noEmit",
     "test:headed": "playwright test --headed",
     "test:ui": "playwright test --ui",
     "report": "playwright show-report"

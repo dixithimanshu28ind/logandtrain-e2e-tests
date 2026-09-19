@@ -1,6 +1,6 @@
 import { test, expect } from "../../fixtures/test-fixtures";
 
-test.describe("Profile", () => {
+test.describe("Profile", { tag: "@smoke" }, () => {
   test("saves profile details and persists them across a reload", async ({
     signedInPage: page,
     profilePage,
