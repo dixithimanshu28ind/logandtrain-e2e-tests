@@ -7,8 +7,19 @@ export class WorkoutFormPage {
     await this.page.goto("/workout/new");
   }
 
-  async fillWorkoutType(type: string) {
-    await this.page.getByLabel("Workout Type").fill(type);
+  /**
+   * Picks a type in the first section that has none chosen yet, by searching
+   * the dropdown and clicking the match.
+   */
+  async selectWorkoutType(type: string) {
+    await this.page.getByRole("button", { name: "Select workout type" }).first().click();
+    const search = this.page.getByPlaceholder("Search workout types...");
+    await search.fill(type);
+    // Scope to the open dropdown, whose siblings include the search box.
+    await search
+      .locator("xpath=..")
+      .getByRole("button", { name: type, exact: true })
+      .click();
   }
 
   async addExercise() {
@@ -20,20 +31,27 @@ export class WorkoutFormPage {
   }
 
   async fillFirstSet(effortValue: number, reps: number) {
-    await this.page.getByPlaceholder("kg").first().fill(String(effortValue));
+    await this.firstSetEffortInput().fill(String(effortValue));
     await this.page.getByPlaceholder("reps").first().fill(String(reps));
   }
 
-  async firstSetEffortValue(): Promise<string> {
-    return (await this.page.getByPlaceholder("kg").first().inputValue()) ?? "";
+  firstSetEffortInput() {
+    return this.page.getByPlaceholder("kg").first();
   }
 
-  async submit(label: "Submit Workout" | "Save Changes") {
-    await this.page.getByRole("button", { name: label }).click();
+  async save() {
+    await this.page.getByRole("button", { name: "Save Workouts" }).click();
   }
 
-  async deleteWorkout() {
-    await this.page.getByRole("button", { name: "Delete Workout" }).click();
-    await this.page.getByRole("button", { name: "Yes, delete" }).click();
+  /**
+   * Removes the first workout section (confirming the dialog). Deletion is
+   * only persisted by the next `save()` — the form removes locally first.
+   */
+  async removeFirstWorkout() {
+    await this.page.getByRole("button", { name: "Remove Workout" }).first().click();
+    await this.page
+      .getByRole("dialog")
+      .getByRole("button", { name: "Remove", exact: true })
+      .click();
   }
 }
