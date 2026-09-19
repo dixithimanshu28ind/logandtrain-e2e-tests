@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      base_url:
+        description: "URL to test (defaults to the BASE_URL repo variable, then production)"
+        required: false
   schedule:
     - cron: "0 6 * * *" # daily smoke run against production
 
@@ -11,7 +15,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     env:
-      BASE_URL: https://gym-workout-logger-ashen.vercel.app
+      BASE_URL: ${{ inputs.base_url || vars.BASE_URL || 'https://gym-workout-logger-ashen.vercel.app' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
     steps:

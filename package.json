@@ -1,8 +1,8 @@
 {
-  "name": "gymlog-e2e-tests",
+  "name": "logandtrain-e2e-tests",
   "version": "1.0.0",
   "private": true,
-  "description": "Playwright smoke test suite for GymLog (https://github.com/dixithimanshu28ind/gym-workout-logger)",
+  "description": "Playwright end-to-end test suite for Log & Train (https://github.com/dixithimanshu28ind/gym-workout-logger)",
   "scripts": {
     "test": "playwright test",
     "test:headed": "playwright test --headed",

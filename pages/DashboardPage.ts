@@ -8,15 +8,21 @@ export class DashboardPage {
   }
 
   async streakDays(): Promise<number> {
+    // The count sits in the <p> right above the "Current streak" caption.
+    // Anchoring on the caption avoids matching the "Longest streak" card,
+    // which also renders "N days".
     const text = await this.page
-      .locator("text=/\\d+ days?/")
-      .first()
+      .getByText("Current streak", { exact: true })
+      .locator("xpath=preceding-sibling::p[1]")
       .textContent();
     return Number(text?.match(/\d+/)?.[0] ?? 0);
   }
 
+  /** The dashboard tile for a logged day, matched by a workout type shown on it. */
   workoutCard(workoutType: string) {
-    return this.page.getByRole("link").filter({ hasText: workoutType });
+    return this.page
+      .locator('a[href^="/workout/new?date="]')
+      .filter({ hasText: workoutType });
   }
 
   logNewWorkoutLink() {
