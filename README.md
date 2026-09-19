@@ -116,6 +116,13 @@ Vercel reports each deployment to GitHub. The app repo's `.github/workflows/e2e-
 
 The two tokens are fine-grained personal access tokens and expire (max one year), so renew them before then — a run that fails with a 401/403 on the dispatch or status call means one has expired.
 
+**Setting a token secret.** `gh secret set NAME` only prompts for the value in a real interactive terminal. Run non-interactively (e.g. through an agent's shell), it silently stores an **empty** secret, and the workflow's gate then fails with "is missing or empty". To avoid that, copy the token to the clipboard and pipe it in, so it never appears in the command or its output:
+
+```bash
+pbpaste | gh secret set APP_STATUS_TOKEN -R dixithimanshu28ind/logandtrain-e2e-tests
+pbpaste | gh secret set E2E_DISPATCH_TOKEN -R dixithimanshu28ind/gym-workout-logger
+```
+
 ### Test-user sweep
 
 Throwaway users are normally deleted by each test. The daily run also calls `npm run sweep`, which deletes any that were orphaned (a crashed run, say) once they're over 2 hours old. It matches only the exact test-email shape (`e2e-<digits>-<id>@logandtrain-test.dev`, or the older `@gymlog-test.dev`), never a real account.

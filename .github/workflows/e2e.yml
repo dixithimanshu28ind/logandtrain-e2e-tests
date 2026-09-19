@@ -74,6 +74,20 @@ jobs:
           fi
           echo "report_sha=$REPORT_SHA" >> "$GITHUB_OUTPUT"
 
+      # gh's own error for a missing token is easy to misread, and a secret
+      # that exists but holds an empty value looks identical to a missing one.
+      - name: Check the status token is usable
+        if: steps.decide.outputs.run == 'true' && steps.decide.outputs.report_sha != ''
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "::error::APP_STATUS_TOKEN is missing or empty. Re-set it with the token value (see README, 'Secrets and variables')."
+            exit 1
+          fi
+          if ! gh api "repos/$APP_REPO" --jq .full_name >/dev/null 2>&1; then
+            echo "::error::APP_STATUS_TOKEN cannot read $APP_REPO. Check it is a fine-grained token with access to that repository and has not expired."
+            exit 1
+          fi
+
       - name: Mark the commit as pending
         if: steps.decide.outputs.run == 'true' && steps.decide.outputs.report_sha != ''
         run: |
