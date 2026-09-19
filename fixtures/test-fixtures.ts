@@ -4,6 +4,7 @@ import { purgeUserData, seedWorkout, SeedWorkout } from "../utils/seed";
 import { sessionStorageKey, signInViaApi } from "../utils/session";
 import { watchPage } from "./console-guard";
 import { stubChatWebhook } from "./third-party";
+import { applyBypassToBrowser, requestWithBypass } from "./vercel-bypass";
 import { AuthPage } from "../pages/AuthPage";
 import { DashboardPage } from "../pages/DashboardPage";
 import { WorkoutFormPage } from "../pages/WorkoutFormPage";
@@ -28,8 +29,6 @@ type Fixtures = {
    * has already loaded the dashboard by then, so reload it to see seeded data.
    */
   seed: (workout: SeedWorkout) => Promise<string>;
-  /** Auto: stubs third-party calls for every test. */
-  thirdPartyStubs: void;
   /** Auto: fails the test on console errors, uncaught exceptions, 5xx and failed requests. */
   consoleGuard: void;
 };
@@ -42,13 +41,16 @@ type Options = {
 export const test = base.extend<Fixtures & Options>({
   allowedProblems: [[], { option: true }],
 
-  thirdPartyStubs: [
-    async ({ context }, use) => {
-      await stubChatWebhook(context);
-      await use();
-    },
-    { auto: true },
-  ],
+  // Routes are registered on the context as it's created, so they're in place
+  // before any page can make a request: the chat-widget stub, and (against
+  // protected Vercel deployments) the deployment-protection bypass header.
+  context: async ({ context, baseURL }, use) => {
+    await stubChatWebhook(context);
+    await applyBypassToBrowser(context, baseURL);
+    await use(context);
+  },
+
+  request: requestWithBypass,
 
   consoleGuard: [
     async ({ page, allowedProblems }, use) => {

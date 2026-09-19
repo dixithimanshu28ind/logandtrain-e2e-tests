@@ -1,6 +1,6 @@
-// API specs don't need a browser page, so they use Playwright's base `test`
-// rather than the app fixtures (which would open a page per test).
-import { test, expect } from "@playwright/test";
+// API specs don't need a browser page, so they use the lightweight API
+// fixtures rather than the app fixtures (which would open a page per test).
+import { test, expect } from "../../fixtures/api-fixtures";
 
 test.describe("Programs API", { tag: ["@api", "@smoke"] }, () => {
   test("GET /api/programs returns the published programs", async ({ request }) => {
