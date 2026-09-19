@@ -3,7 +3,6 @@ import { createTestUser, deleteTestUser, TestUser } from "../utils/supabaseAdmin
 import { purgeUserData, seedWorkout, SeedWorkout } from "../utils/seed";
 import { sessionStorageKey, signInViaApi } from "../utils/session";
 import { watchPage } from "./console-guard";
-import { stubChatWebhook } from "./third-party";
 import { applyBypassToBrowser, requestWithBypass } from "./vercel-bypass";
 import { AuthPage } from "../pages/AuthPage";
 import { DashboardPage } from "../pages/DashboardPage";
@@ -41,11 +40,10 @@ type Options = {
 export const test = base.extend<Fixtures & Options>({
   allowedProblems: [[], { option: true }],
 
-  // Routes are registered on the context as it's created, so they're in place
-  // before any page can make a request: the chat-widget stub, and (against
-  // protected Vercel deployments) the deployment-protection bypass header.
+  // The route is registered on the context as it's created, so it's in place
+  // before any page can make a request. It adds the deployment-protection
+  // bypass header when testing protected Vercel deployments (a no-op otherwise).
   context: async ({ context, baseURL }, use) => {
-    await stubChatWebhook(context);
     await applyBypassToBrowser(context, baseURL);
     await use(context);
   },
@@ -95,7 +93,9 @@ export const test = base.extend<Fixtures & Options>({
     await use(new ProgramsPage(page));
   },
 
-  signedInPage: async ({ page, context, testUser }, use) => {
+  // The longer timeout gives signInViaApi room to back off and retry if
+  // Supabase rate-limits the sign-in during a heavy run.
+  signedInPage: [async ({ page, context, testUser }, use) => {
     const session = await signInViaApi(testUser.email, testUser.password);
     // Init scripts re-run on every navigation. Seed the session once per tab
     // (sessionStorage survives reloads), or a test that signs out would be
@@ -111,7 +111,7 @@ export const test = base.extend<Fixtures & Options>({
     await page.goto("/dashboard");
     await expect(page.getByRole("heading", { name: "My Workouts" })).toBeVisible();
     await use(page);
-  },
+  }, { timeout: 120_000 }],
 });
 
 export { expect } from "@playwright/test";

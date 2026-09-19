@@ -1,8 +1,8 @@
 import { test, expect } from "../../fixtures/test-fixtures";
 
-// Every public page: loads with a 200 and shows its own h1. The FitSpark chat
-// widget also renders an h1 on every page, so each check names the heading
-// text rather than just "an h1 exists".
+// Every public page: loads with a 200 and shows its own h1. Each check names
+// the heading text rather than just "an h1 exists", so a page that renders the
+// wrong content (or an error state with its own heading) can't pass.
 const PUBLIC_PAGES = [
   { path: "/features", h1: /Everything you need to keep training/ },
   { path: "/how-it-works", h1: /Training shouldn.t need instructions/ },
