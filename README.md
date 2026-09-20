@@ -1,6 +1,6 @@
 # Log & Train E2E Tests
 
-Playwright + TypeScript end-to-end test suite for [Log & Train](https://github.com/dixithimanshu28ind/gym-workout-logger), a workout logging app ([live app](https://gym-workout-logger-ashen.vercel.app/)).
+Playwright + TypeScript end-to-end test suite for [Log & Train](https://github.com/dixithimanshu28ind/gym-workout-logger), a workout logging app ([live app](https://www.logandtrain.com)).
 
 ## Coverage
 
@@ -119,7 +119,7 @@ The URL under test is, in order: the deploy's URL, the manual `base_url` input, 
 
 Vercel reports each deployment to GitHub. The app repo's `.github/workflows/e2e-on-deploy.yml` listens for a successful one and sends this repo a `repository_dispatch` (`app-deployed`) carrying `{ url, sha, environment }`. This repo tests that URL and posts the result back, so the deploy commit shows a ✓ or ✗ linking to the run.
 
-- **Production** deploys are tested at the public production alias, because Vercel's per-deployment URLs are behind login.
+- **Production** deploys are tested at the real site, `https://www.logandtrain.com` — the URL users actually visit, not the `*.vercel.app` alias. Vercel's per-deployment URLs are behind login anyway. The gate only accepts that host or a `*.vercel.app` one, so a mistyped or hostile dispatch URL is refused.
 - **Preview** deploys are behind Vercel login too. They're tested only when `VERCEL_BYPASS_SECRET` is set (below); otherwise the run is skipped, not failed.
 - **Waiting for the right build.** The URL can lag the deploy event, and testing the previous build would report a pass for a commit it never saw. So before any test runs, `scripts/wait-for-deploy.sh` polls the app's `GET /api/version` until it reports the commit under test (up to 3 minutes; the bypass secret is sent only to `*.vercel.app` hosts). Outcomes:
   - **Reports the commit:** the tests run.
@@ -137,7 +137,7 @@ Vercel reports each deployment to GitHub. The app repo's `.github/workflows/e2e-
 | App repo, secret | `E2E_DISPATCH_TOKEN` | Send the dispatch to this repo (fine-grained token, *Contents: write*) |
 | This repo, secret (optional) | `VERCEL_BYPASS_SECRET` | Test Preview deploys. Create it in Vercel: project → Settings → Deployment Protection → *Protection Bypass for Automation*. Sent only to the app's own origin. |
 | This repo, variable (optional) | `BASE_URL` | Default URL under test |
-| App repo, variable (optional) | `PRODUCTION_URL` | Overrides the production alias the trigger tests |
+| App repo, variable (optional) | `PRODUCTION_URL` | Overrides the production URL the trigger tests. If you change it, update the gate's allowed hosts in `e2e.yml` too, or the run will refuse the URL. |
 
 The two tokens are fine-grained personal access tokens and expire (max one year), so renew them before then — a run that fails with a 401/403 on the dispatch or status call means one has expired.
 

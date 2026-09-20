@@ -45,7 +45,7 @@ jobs:
       report_sha: ${{ steps.decide.outputs.report_sha }}
     env:
       EVENT: ${{ github.event_name }}
-      BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://gym-workout-logger-ashen.vercel.app' }}
+      BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://www.logandtrain.com' }}
       DEPLOY_ENV: ${{ github.event.client_payload.environment }}
       REPORT_SHA: ${{ github.event.client_payload.sha || inputs.report_sha }}
       HAS_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET != '' }}
@@ -55,8 +55,9 @@ jobs:
         id: decide
         run: |
           # Values arrive from a dispatch payload, so never trust their shape.
+          # Production is the real site; previews are per-deployment Vercel URLs.
           if [ "$EVENT" = "repository_dispatch" ]; then
-            if ! [[ "$BASE_URL" =~ ^https://[A-Za-z0-9.-]+\.vercel\.app/?$ ]]; then
+            if ! [[ "$BASE_URL" =~ ^https://(www\.logandtrain\.com|[A-Za-z0-9.-]+\.vercel\.app)/?$ ]]; then
               echo "::error::Refusing to test unexpected URL: $BASE_URL"; exit 1
             fi
           fi
@@ -109,7 +110,7 @@ jobs:
       SUITE: ${{ inputs.suite }}
       EXPECTED_SHA: ${{ needs.gate.outputs.report_sha }}
       DEPLOY_ENV: ${{ github.event.client_payload.environment }}
-      BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://gym-workout-logger-ashen.vercel.app' }}
+      BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://www.logandtrain.com' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
       VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
