@@ -9,6 +9,8 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { WorkoutFormPage } from "../pages/WorkoutFormPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { ProgramsPage } from "../pages/ProgramsPage";
+import { ProgramDetailPage } from "../pages/ProgramDetailPage";
+import { fetchProgram, TEST_PROGRAM_ID, ProgramData } from "../utils/programs";
 
 type Fixtures = {
   testUser: TestUser;
@@ -17,6 +19,9 @@ type Fixtures = {
   workoutFormPage: WorkoutFormPage;
   profilePage: ProfilePage;
   programsPage: ProgramsPage;
+  /** The program the tests exercise, as the API serves it (see utils/programs.ts). */
+  programData: ProgramData;
+  programDetailPage: ProgramDetailPage;
   /**
    * A page already signed in as `testUser` and sitting on /dashboard. The
    * session is injected via the API, not the sign-in form, so this is fast
@@ -91,6 +96,14 @@ export const test = base.extend<Fixtures & Options>({
 
   programsPage: async ({ page }, use) => {
     await use(new ProgramsPage(page));
+  },
+
+  programData: async ({ request }, use) => {
+    await use(await fetchProgram(request, TEST_PROGRAM_ID));
+  },
+
+  programDetailPage: async ({ page, programData }, use) => {
+    await use(new ProgramDetailPage(page, programData.detail.safetyNote.actionLabel));
   },
 
   // The longer timeout gives signInViaApi room to back off and retry if

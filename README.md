@@ -4,14 +4,28 @@ Playwright + TypeScript end-to-end test suite for [Log & Train](https://github.c
 
 ## Coverage
 
+The `@smoke` set covers the critical paths and gates every PR preview and deploy. Everything marked `@regression` is deeper and runs nightly.
+
+**Smoke**
 - **Public pages** — landing, features, how-it-works, legal, support, 404
 - **Authentication** — sign up, sign in, sign out
-- **Sign-out destination** (`@regression`) — lands on the homepage from every page, on slow networks, and after the unsaved-changes dialog; visitors who didn't choose to sign out still go to `/signin`
 - **Programs** — list and detail pages, checked against `/api/programs`
 - **Dashboard** — seeded workouts, streak, running total
 - **Workout CRUD** — log via the type dropdown, edit, remove, streak updates
 - **Profile** — save and persist across a reload
 - **API** — programs endpoints, and `/api/revalidate` rejecting bad secrets
+
+**Regression**
+- **Sign-out destination** — lands on the homepage from every page, on slow networks, and after the unsaved-changes dialog; visitors who didn't choose to sign out still go to `/signin`
+- **Program selection** — the consent checkbox gates joining, joining is saved, leaving asks first, the consent stays checked on revisit, the dashboard and profile show the program, and joining while signed out goes through sign-up
+- **Logging a program workout** — the recommended day and prefill, prescribed exercises and targets, swapping to an alternative, the partial-completion and nothing-completed dialogs, resuming a part-done day, "Log Something Else", and choosing another day
+- **Logging edge cases** — several workouts on one day, the Rest Day rules, custom "Other" types, the unsaved-changes guard on in-app navigation, and the measurement types (weight, bodyweight, duration)
+- **Dashboard** — the current-streak rules (including the unlogged-today leniency and a broken streak), the 7-day threshold for the longest-streak card, the empty states, and week navigation
+- **Auth** — wrong password and unknown email, form validation, the sign-in/sign-up links, forgot-password, and the modal
+- **Profile** — decimals and trimming, clearing a field, and the sidebar showing the saved name
+- **CMS admin** — the login page, and the user list not being readable anonymously
+
+Expected values for program content (day titles, exercise names, counts) are read from `/api/programs` at run time, so editing programs in the CMS doesn't break tests.
 
 ## Structure
 
@@ -46,8 +60,13 @@ Two Playwright projects run: `chromium` (desktop) and `mobile-chrome` (Pixel 7 v
 - **API sign-in.** `signedInPage` injects a session instead of driving the sign-in form. Sign-in through the UI is tested once, in `auth.spec.ts`.
 - **API seeding.** The `seed` fixture inserts workouts directly, so a test that needs data doesn't click through the log form.
 - **Console-error guard.** An automatic fixture fails any test that produces an uncaught exception, a console error, a 5xx response, or a failed request. A test that legitimately triggers one opts out of that single message with `test.use({ allowedProblems: [/regex/] })`.
-- **Rate-limit backoff.** Supabase rate-limits auth requests per IP, so `signInViaApi` waits and retries on a 429 instead of failing the test. Heavily repeated runs (100+ sign-ins in a few minutes) are what trigger it.
+- **Timeouts and retries on setup calls.** `signInViaApi` gives each attempt a 20 s timeout and retries on a Supabase rate limit (429) or a transient network failure, and `fetchProgram` retries transient failures on its read-only GET. Navigations time out at 45 s. A stalled connection now fails fast with its own error instead of hanging until the test times out.
+- **Ambiguous alerts.** Next.js keeps an empty `role="alert"` route announcer on every page, so a bare `getByRole("alert")` matches two elements. Use `alertWith(page, text)` (`utils/locators.ts`).
 - **Throttled runs.** `throttleNetwork` (`utils/network.ts`) slows the network at the moment of the action under test. It waits for the page to go idle first; changing the emulated conditions mid-request aborts in-flight requests with `ERR_NETWORK_CHANGED`, which the guard would rightly report.
+
+## Running heavily from one machine
+
+Supabase Auth rate-limits sign-ins per IP (about 100 in a few minutes), and Vercel's firewall can start **challenging** an IP that sends a lot of traffic to the site: plain requests get `403` with an `x-vercel-mitigated: challenge` header, and browsers see `ERR_TIMED_OUT`. Both are temporary and say nothing about the app. Normal runs, and CI (each run from a fresh GitHub runner), stay well under both. If you're repeating the suite many times locally (`--repeat-each`), keep the worker count low, run subsets, and wait a few minutes if failures suddenly turn into 403s or timeouts.
 
 ## Known issues
 

@@ -19,6 +19,9 @@ export default defineConfig({
     : [["html", { open: "never" }], ["list"]],
   use: {
     baseURL: BASE_URL,
+    // A navigation that stalls should fail with its own error, not wait out
+    // the whole test timeout.
+    navigationTimeout: 45_000,
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
