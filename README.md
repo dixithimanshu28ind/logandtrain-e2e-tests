@@ -119,8 +119,13 @@ The URL under test is, in order: the deploy's URL, the manual `base_url` input, 
 
 Vercel reports each deployment to GitHub. The app repo's `.github/workflows/e2e-on-deploy.yml` listens for a successful one and sends this repo a `repository_dispatch` (`app-deployed`) carrying `{ url, sha, environment }`. This repo tests that URL and posts the result back, so the deploy commit shows a ✓ or ✗ linking to the run.
 
-- **Production** deploys are tested at the public production alias. Vercel's per-deployment URLs are behind login, and the app exposes no build id, so the run waits 20 seconds for the alias to switch over.
+- **Production** deploys are tested at the public production alias, because Vercel's per-deployment URLs are behind login.
 - **Preview** deploys are behind Vercel login too. They're tested only when `VERCEL_BYPASS_SECRET` is set (below); otherwise the run is skipped, not failed.
+- **Waiting for the right build.** The URL can lag the deploy event, and testing the previous build would report a pass for a commit it never saw. So before any test runs, `scripts/wait-for-deploy.sh` polls the app's `GET /api/version` until it reports the commit under test (up to 3 minutes; the bypass secret is sent only to `*.vercel.app` hosts). Outcomes:
+  - **Reports the commit:** the tests run.
+  - **Never does:** the run stops without running any tests, and the commit gets an `error` status saying "Deployment never served this commit; no tests ran", not a misleading test failure.
+  - **A build with no `/api/version`** (an older branch, or a deploy made without git metadata): let through after a 45 s grace period with a notice, since it can't be verified. The grace period is there because the first deploy that *adds* the endpoint is served by the old build (404) until the URL switches.
+  - A manual run with `report_sha` set gets the same wait, meaning "this URL should be serving that commit".
 - The dispatched URL and SHA are validated before use (`*.vercel.app` over https, 40-character hash), since they arrive in an external payload.
 
 ### Secrets and variables

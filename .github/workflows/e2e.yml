@@ -16,7 +16,7 @@ on:
         options: [all, smoke]
         default: all
       report_sha:
-        description: "App commit SHA to post the result on as a status (optional)"
+        description: "App commit SHA the URL should be serving (optional). The run waits until /api/version reports it, then posts the result on that commit as a status."
         required: false
   # Sent by the app repo's e2e-on-deploy workflow when Vercel finishes a deploy.
   # Payload: { url, sha, environment }
@@ -100,9 +100,14 @@ jobs:
     needs: gate
     if: needs.gate.outputs.run == 'true'
     runs-on: ubuntu-latest
+    outputs:
+      # ok | noendpoint | timeout, from the "Wait for the deployment" step
+      # (empty when that step was skipped).
+      live: ${{ steps.live.outputs.result }}
     env:
       EVENT: ${{ github.event_name }}
       SUITE: ${{ inputs.suite }}
+      EXPECTED_SHA: ${{ needs.gate.outputs.report_sha }}
       DEPLOY_ENV: ${{ github.event.client_payload.environment }}
       BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://gym-workout-logger-ashen.vercel.app' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -131,11 +136,15 @@ jobs:
         if: github.event_name == 'schedule'
         run: npm run sweep
 
-      # No build id is exposed by the app, so the production alias can lag the
-      # deploy event by a few seconds. Give it a moment to switch over.
-      - name: Let the production alias settle
-        if: env.DEPLOY_ENV == 'Production'
-        run: sleep 20
+      # The URL can lag the deploy event, and testing the previous build would
+      # report a pass for a commit it never saw. So wait until the deployment
+      # says (via GET /api/version) that it is serving the commit under test.
+      # If it never does, this step fails and no tests run. A build with no
+      # such endpoint (an older branch) is let through with a notice.
+      - name: Wait for the deployment to serve this commit
+        id: live
+        if: env.EXPECTED_SHA != ''
+        run: bash scripts/wait-for-deploy.sh
 
       - name: Run tests
         run: |
@@ -161,16 +170,23 @@ jobs:
       GH_TOKEN: ${{ secrets.APP_STATUS_TOKEN }}
       REPORT_SHA: ${{ needs.gate.outputs.report_sha }}
       TEST_RESULT: ${{ needs.test.result }}
+      LIVE: ${{ needs.test.outputs.live }}
       DEPLOY_ENV: ${{ github.event.client_payload.environment }}
     steps:
       - name: Post the result
         run: |
           TARGET="${DEPLOY_ENV:-manual run}"
-          case "$TEST_RESULT" in
-            success)   STATE=success; DESC="Smoke tests passed ($TARGET)" ;;
-            failure)   STATE=failure; DESC="Smoke tests failed ($TARGET)" ;;
-            *)         STATE=error;   DESC="Smoke run did not complete: $TEST_RESULT ($TARGET)" ;;
-          esac
+          # If the deployment never served this commit, no tests ran: that is an
+          # error to look into, not a test failure.
+          if [ "$TEST_RESULT" = "failure" ] && [ "$LIVE" = "timeout" ]; then
+            STATE=error; DESC="Deployment never served this commit; no tests ran ($TARGET)"
+          else
+            case "$TEST_RESULT" in
+              success)   STATE=success; DESC="Smoke tests passed ($TARGET)" ;;
+              failure)   STATE=failure; DESC="Smoke tests failed ($TARGET)" ;;
+              *)         STATE=error;   DESC="Smoke run did not complete: $TEST_RESULT ($TARGET)" ;;
+            esac
+          fi
           gh api "repos/$APP_REPO/statuses/$REPORT_SHA" \
             -f state="$STATE" -f context="e2e/smoke" \
             -f description="$DESC" -f target_url="$RUN_URL"
