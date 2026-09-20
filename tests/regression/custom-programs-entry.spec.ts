@@ -1,0 +1,133 @@
+import { test, expect } from "../../fixtures/test-fixtures";
+import { featureState } from "../../utils/features";
+
+interface ProgramSummary {
+  id: string;
+  name: string;
+}
+
+// The Custom Programs entry on the Programs page is controlled by the
+// `custom_programs` feature flag (GYM-40), so what the page should show depends
+// on what the environment has set. Each test reads /api/features, runs only
+// when its state is the one in force, and is skipped otherwise. Production is
+// Off today, so the Off tests run there; the others run against a preview or
+// local build with FEATURE_FLAGS_OVERRIDE set, or once the flag is switched in
+// the CMS.
+//
+// @regression: whichever state is in force, a flag change is a CMS edit, not a
+// deploy, so the nightly run is what notices a page that no longer matches.
+test.describe("Programs page: Custom Programs entry", { tag: "@regression" }, () => {
+  const freePrograms = async (request: Parameters<typeof featureState>[0]) => {
+    const { programs } = (await (await request.get("/api/programs")).json()) as { programs: ProgramSummary[] };
+    expect(programs.length).toBeGreaterThan(0);
+    return programs;
+  };
+
+  test("Off: the page has nothing about Custom Programs", async ({ page, request, programsPage }) => {
+    test.skip((await featureState(request, "custom_programs")) !== "off", "custom_programs is not Off here");
+    const programs = await freePrograms(request);
+
+    await programsPage.goto();
+    // Wait for the list first, so the absences below are not just a page still loading.
+    await expect(page.getByRole("heading", { level: 2, name: programs[0].name })).toBeVisible();
+
+    await expect(programsPage.customProgramsSection()).toHaveCount(0);
+    await expect(programsPage.freeProgramsHeading()).toHaveCount(0);
+    await expect(programsPage.customProgramLinks()).toHaveCount(0);
+    await expect(page.getByText("CUSTOM PROGRAMS", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("₹")).toHaveCount(0);
+    for (const program of programs) {
+      await expect(page.getByRole("heading", { level: 2, name: program.name })).toBeVisible();
+    }
+  });
+
+  test("Off: signed in, the page is the same", async ({ signedInPage: page, request, programsPage }) => {
+    test.skip((await featureState(request, "custom_programs")) !== "off", "custom_programs is not Off here");
+    const programs = await freePrograms(request);
+
+    await programsPage.goto();
+    await expect(page.getByRole("heading", { level: 2, name: programs[0].name })).toBeVisible();
+    await expect(programsPage.customProgramsSection()).toHaveCount(0);
+    await expect(programsPage.freeProgramsHeading()).toHaveCount(0);
+  });
+
+  test("Coming soon: a teaser with no prices and nothing to click", async ({ page, request, programsPage }) => {
+    test.skip(
+      (await featureState(request, "custom_programs")) !== "coming_soon",
+      "custom_programs is not Coming soon here"
+    );
+    const programs = await freePrograms(request);
+
+    await programsPage.goto();
+    const section = programsPage.customProgramsSection();
+    await expect(section).toBeVisible();
+    await expect(section.getByText("CUSTOM PROGRAMS", { exact: true })).toBeVisible();
+    await expect(section.getByRole("heading", { level: 3, name: "Training Program" })).toBeVisible();
+    await expect(section.getByRole("heading", { level: 3, name: "Training + Diet Program" })).toBeVisible();
+
+    // Both options say so, and offer nothing to buy or open.
+    await expect(section.getByText("Coming soon", { exact: true })).toHaveCount(2);
+    await expect(section.getByText("₹")).toHaveCount(0);
+    await expect(section.getByRole("link")).toHaveCount(0);
+    await expect(section.getByRole("button")).toHaveCount(0);
+    await expect(programsPage.customProgramLinks()).toHaveCount(0);
+
+    // The free programs sit underneath, with their heading.
+    await expect(programsPage.freeProgramsHeading()).toBeVisible();
+    await expect(page.getByText("Choose a program and start training right away.")).toBeVisible();
+    for (const program of programs) {
+      await expect(page.getByRole("heading", { level: 2, name: program.name })).toBeVisible();
+    }
+  });
+
+  test("Live: both options with a price and a button that keeps the choice", async ({
+    page,
+    request,
+    programsPage,
+  }) => {
+    test.skip((await featureState(request, "custom_programs")) !== "live", "custom_programs is not Live here");
+    const programs = await freePrograms(request);
+
+    await programsPage.goto();
+    const section = programsPage.customProgramsSection();
+    await expect(section).toBeVisible();
+    await expect(section.getByText("CUSTOM PROGRAMS", { exact: true })).toBeVisible();
+
+    await expect(section.getByRole("heading", { level: 3, name: "Training Program" })).toBeVisible();
+    await expect(section.getByText("₹299 · One-time")).toBeVisible();
+    await expect(section.getByRole("link", { name: "Get My Training Program →" })).toHaveAttribute(
+      "href",
+      "/programs/custom?type=training"
+    );
+
+    await expect(section.getByRole("heading", { level: 3, name: "Training + Diet Program" })).toBeVisible();
+    await expect(section.getByText("₹499 · One-time")).toBeVisible();
+    await expect(section.getByRole("link", { name: "Get Training + Diet Program →" })).toHaveAttribute(
+      "href",
+      "/programs/custom?type=training-diet"
+    );
+
+    // No "Coming soon" once it is live.
+    await expect(section.getByText("Coming soon")).toHaveCount(0);
+
+    await expect(programsPage.freeProgramsHeading()).toBeVisible();
+    for (const program of programs) {
+      await expect(page.getByRole("heading", { level: 2, name: program.name })).toBeVisible();
+    }
+  });
+
+  test("Coming soon or Live: the block also shows inside the signed-in app", async ({
+    signedInPage: page,
+    request,
+    programsPage,
+  }) => {
+    const state = await featureState(request, "custom_programs");
+    test.skip(state === "off", "custom_programs is Off here");
+    const programs = await freePrograms(request);
+
+    await programsPage.goto();
+    await expect(programsPage.customProgramsSection()).toBeVisible();
+    await expect(programsPage.freeProgramsHeading()).toBeVisible();
+    await expect(page.getByRole("heading", { level: 2, name: programs[0].name })).toBeVisible();
+  });
+});
