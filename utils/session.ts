@@ -44,20 +44,26 @@ export async function signInViaApi(email: string, password: string): Promise<Ses
   // its service-role identity with the user's.
   const client = createClient(url, key, {
     auth: { autoRefreshToken: false, persistSession: false },
+    // Without a timeout, a stalled connection hangs until the whole fixture
+    // times out two minutes later with no hint why. Fail the attempt instead.
+    global: {
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(20_000) }),
+    },
   });
 
-  // Supabase rate-limits auth requests per IP. A big or heavily repeated run
-  // can hit that, and it says nothing about the app, so wait and retry rather
-  // than fail the test.
-  const maxAttempts = 8;
+  // Two things can fail a sign-in without saying anything about the app:
+  // Supabase rate-limiting auth requests per IP (heavy or repeated runs), and
+  // a transient network failure. Wait and retry rather than fail the test.
+  const maxAttempts = 6;
   for (let attempt = 1; ; attempt++) {
     const { data, error } = await client.auth.signInWithPassword({ email, password });
     if (!error && data.session) return data.session;
 
     const rateLimited = error?.status === 429 || /rate limit/i.test(error?.message ?? "");
-    if (!rateLimited || attempt === maxAttempts) {
+    const networkFailure = error?.name === "AuthRetryableFetchError";
+    if (!(rateLimited || networkFailure) || attempt === maxAttempts) {
       throw new Error(`API sign-in failed for ${email}: ${error?.message}`);
     }
-    await new Promise((resolve) => setTimeout(resolve, 3000 * attempt + Math.random() * 1000));
+    await new Promise((resolve) => setTimeout(resolve, 2000 * attempt + Math.random() * 1000));
   }
 }

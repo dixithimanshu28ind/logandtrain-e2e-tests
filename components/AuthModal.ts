@@ -9,6 +9,11 @@ export class AuthModal {
     await this.page.getByRole("banner").getByRole("button", { name: "Sign In" }).click();
   }
 
+  /** Opens the modal from the header's "Start Training" button (desktop layout). */
+  async openSignUp() {
+    await this.page.getByRole("banner").getByRole("button", { name: "Start Training" }).click();
+  }
+
   async signIn(email: string, password: string) {
     const dialog = this.page.getByRole("dialog");
     await dialog.getByLabel("Email").fill(email);
