@@ -11,4 +11,19 @@ export class ProgramsPage {
   programLink(id: string) {
     return this.page.locator(`a[href="/programs/${id}"]`);
   }
+
+  /** The Custom Programs block (present only when its feature flag is Coming soon or Live). */
+  customProgramsSection() {
+    return this.page.getByRole("region", { name: "Built around you." });
+  }
+
+  /** Heading above the free programs; it only exists alongside the Custom Programs block. */
+  freeProgramsHeading() {
+    return this.page.getByRole("heading", { level: 2, name: "Free Training Programs" });
+  }
+
+  /** Any link into the Custom Programs experience, anywhere on the page. */
+  customProgramLinks() {
+    return this.page.locator('a[href^="/programs/custom"]');
+  }
 }
