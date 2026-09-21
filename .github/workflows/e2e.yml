@@ -113,6 +113,9 @@ jobs:
       BASE_URL: ${{ github.event.client_payload.url || inputs.base_url || vars.BASE_URL || 'https://www.logandtrain.com' }}
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+      # The public (anon) key, the same one the website ships in its JavaScript.
+      # Not a secret, so a variable. Used to check what a stranger can reach.
+      SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
       VERCEL_BYPASS_SECRET: ${{ secrets.VERCEL_BYPASS_SECRET }}
     steps:
       - uses: actions/checkout@v7
