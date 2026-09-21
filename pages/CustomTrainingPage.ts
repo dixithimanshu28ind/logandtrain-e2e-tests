@@ -11,6 +11,27 @@ export class CustomTrainingPage {
     await this.page.goto(CustomTrainingPage.path);
   }
 
+  /** Coming soon: the buttons open the "Register your interest" form (GYM-47). */
+  heroInterestButton() {
+    return this.page.getByRole("button", { name: "Register your interest →" });
+  }
+
+  finalInterestButton() {
+    return this.page.getByRole("button", { name: "Tell us what you'd want →" });
+  }
+
+  interestDialog() {
+    return this.page.getByRole("dialog");
+  }
+
+  /** Fills and submits the open interest form. */
+  async submitInterest(email: string, message?: string) {
+    const dialog = this.interestDialog();
+    await dialog.getByLabel("Email").fill(email);
+    if (message !== undefined) await dialog.getByLabel(/What would you want/).fill(message);
+    await dialog.getByRole("button", { name: "Register interest", exact: true }).click();
+  }
+
   heroButton() {
     return this.page.getByRole("button", { name: "Build My Program →" });
   }
