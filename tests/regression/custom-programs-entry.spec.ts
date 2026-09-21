@@ -51,7 +51,11 @@ test.describe("Programs page: Custom Programs entry", { tag: "@regression" }, ()
     await expect(programsPage.freeProgramsHeading()).toHaveCount(0);
   });
 
-  test("Coming soon: a teaser with no prices and nothing to click", async ({ page, request, programsPage }) => {
+  test("Coming soon: no prices; Training leads to Register interest, Diet is only a teaser", async ({
+    page,
+    request,
+    programsPage,
+  }) => {
     test.skip(
       (await featureState(request, "custom_programs")) !== "coming_soon",
       "custom_programs is not Coming soon here"
@@ -65,12 +69,21 @@ test.describe("Programs page: Custom Programs entry", { tag: "@regression" }, ()
     await expect(section.getByRole("heading", { level: 3, name: "Training Program" })).toBeVisible();
     await expect(section.getByRole("heading", { level: 3, name: "Training + Diet Program" })).toBeVisible();
 
-    // Both options say so, and offer nothing to buy or open.
+    // Both options say Coming soon and neither shows a price.
     await expect(section.getByText("Coming soon", { exact: true })).toHaveCount(2);
     await expect(section.getByText("₹")).toHaveCount(0);
-    await expect(section.getByRole("link")).toHaveCount(0);
     await expect(section.getByRole("button")).toHaveCount(0);
-    await expect(programsPage.customProgramLinks()).toHaveCount(0);
+
+    // Training has its landing page (GYM-41), where the interest form lives, so
+    // it leads there. Diet has none yet (GYM-45), so it offers nothing to click.
+    const training = section.getByRole("article").filter({ has: page.getByRole("heading", { level: 3, name: "Training Program", exact: true }) });
+    await expect(training.getByText("Coming soon", { exact: true })).toBeVisible();
+    await expect(training.getByRole("link", { name: "Register interest →" })).toHaveAttribute(
+      "href",
+      "/programs/custom/training"
+    );
+    await expect(section.getByRole("link")).toHaveCount(1);
+    await expect(programsPage.customProgramLinks()).toHaveCount(1);
 
     // The free programs sit underneath, with their heading.
     await expect(programsPage.freeProgramsHeading()).toBeVisible();

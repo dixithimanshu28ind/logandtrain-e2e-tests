@@ -162,3 +162,61 @@ export async function workoutsOf(
     exercises: Array.isArray(w.exercises) ? w.exercises.length : 0,
   }));
 }
+
+// ---------------------------------------------------------------------------
+// "Register your interest" entries (GYM-47)
+//
+// The form saves to the CMS table `interest_registrations`. Entries made with
+// a test address (e2e-<digits>-<id>@logandtrain-test.dev) are saved but never
+// emailed to support. These helpers read and clean them up. The pattern is
+// strict on purpose: nothing here may ever match a real person's entry.
+// ---------------------------------------------------------------------------
+
+const TEST_INTEREST_EMAIL = /^e2e-\d{10,}-[a-z0-9]+@logandtrain-test\.dev$/;
+
+export interface InterestRow {
+  id: number;
+  email: string;
+  interest: string;
+  message: string | null;
+  email_status: string | null;
+  created_at: string;
+}
+
+export async function interestRowsFor(email: string): Promise<InterestRow[]> {
+  const { data, error } = await getAdminClient()
+    .from("interest_registrations")
+    .select("id, email, interest, message, email_status, created_at")
+    .eq("email", email);
+  if (error) throw new Error(`Failed to read interest entries for ${email}: ${error.message}`);
+  return (data ?? []) as InterestRow[];
+}
+
+export async function deleteInterestRows(email: string): Promise<void> {
+  if (!TEST_INTEREST_EMAIL.test(email)) throw new Error(`Refusing to delete interest entries for a non-test address: ${email}`);
+  const { error } = await getAdminClient().from("interest_registrations").delete().eq("email", email);
+  if (error) throw new Error(`Failed to delete interest entries for ${email}: ${error.message}`);
+}
+
+/** Deletes test entries older than `olderThanHours`, for leftovers from runs that died mid-test. */
+export async function sweepTestInterestRows(opts: { olderThanHours: number; dryRun: boolean }): Promise<number> {
+  const admin = getAdminClient();
+  const cutoff = new Date(Date.now() - opts.olderThanHours * 60 * 60 * 1000).toISOString();
+
+  const { data, error } = await admin
+    .from("interest_registrations")
+    .select("id, email")
+    .like("email", "e2e-%@logandtrain-test.dev")
+    .lt("created_at", cutoff);
+  // The table arrives with a migration that reaches production after this code
+  // does; until then there is nothing to sweep, and that must not fail the run.
+  if (error && (error.code === "PGRST205" || /could not find the table/i.test(error.message))) return 0;
+  if (error) throw new Error(`Failed to list test interest entries: ${error.message}`);
+
+  const ids = (data ?? []).filter((row) => TEST_INTEREST_EMAIL.test(row.email)).map((row) => row.id as number);
+  if (!opts.dryRun && ids.length > 0) {
+    const { error: deleteError } = await admin.from("interest_registrations").delete().in("id", ids);
+    if (deleteError) throw new Error(`Failed to delete test interest entries: ${deleteError.message}`);
+  }
+  return ids.length;
+}
