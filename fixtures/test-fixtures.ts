@@ -9,6 +9,7 @@ import { DashboardPage } from "../pages/DashboardPage";
 import { WorkoutFormPage } from "../pages/WorkoutFormPage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { ProgramsPage } from "../pages/ProgramsPage";
+import { CustomTrainingPage } from "../pages/CustomTrainingPage";
 import { ProgramDetailPage } from "../pages/ProgramDetailPage";
 import { fetchProgram, TEST_PROGRAM_ID, ProgramData } from "../utils/programs";
 
@@ -19,6 +20,7 @@ type Fixtures = {
   workoutFormPage: WorkoutFormPage;
   profilePage: ProfilePage;
   programsPage: ProgramsPage;
+  customTrainingPage: CustomTrainingPage;
   /** The program the tests exercise, as the API serves it (see utils/programs.ts). */
   programData: ProgramData;
   programDetailPage: ProgramDetailPage;
@@ -96,6 +98,10 @@ export const test = base.extend<Fixtures & Options>({
 
   programsPage: async ({ page }, use) => {
     await use(new ProgramsPage(page));
+  },
+
+  customTrainingPage: async ({ page }, use) => {
+    await use(new CustomTrainingPage(page));
   },
 
   programData: async ({ request }, use) => {

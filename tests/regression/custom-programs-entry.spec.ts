@@ -80,7 +80,7 @@ test.describe("Programs page: Custom Programs entry", { tag: "@regression" }, ()
     }
   });
 
-  test("Live: both options with a price and a button that keeps the choice", async ({
+  test("Live: Training has a price and a button; Training + Diet stays Coming soon until its page exists", async ({
     page,
     request,
     programsPage,
@@ -97,18 +97,18 @@ test.describe("Programs page: Custom Programs entry", { tag: "@regression" }, ()
     await expect(section.getByText("₹299 · One-time")).toBeVisible();
     await expect(section.getByRole("link", { name: "Get My Training Program →" })).toHaveAttribute(
       "href",
-      "/programs/custom?type=training"
+      "/programs/custom/training"
     );
 
+    // The Diet option has no landing page yet (its own card and flag, GYM-45), so
+    // even with the flag Live it is a teaser: no price, and nothing to click. A
+    // link to a page that is not there would make every visitor's browser
+    // request a 404.
     await expect(section.getByRole("heading", { level: 3, name: "Training + Diet Program" })).toBeVisible();
-    await expect(section.getByText("₹499 · One-time")).toBeVisible();
-    await expect(section.getByRole("link", { name: "Get Training + Diet Program →" })).toHaveAttribute(
-      "href",
-      "/programs/custom?type=training-diet"
-    );
-
-    // No "Coming soon" once it is live.
-    await expect(section.getByText("Coming soon")).toHaveCount(0);
+    await expect(section.getByText("Coming soon", { exact: true })).toHaveCount(1);
+    await expect(section.getByText("₹499")).toHaveCount(0);
+    await expect(section.getByRole("link")).toHaveCount(1);
+    await expect(section.getByRole("link", { name: /Diet/ })).toHaveCount(0);
 
     await expect(programsPage.freeProgramsHeading()).toBeVisible();
     for (const program of programs) {
